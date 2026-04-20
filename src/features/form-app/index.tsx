@@ -84,7 +84,7 @@ const defaultValues: DocumentFormData = {
   hoSoSo: '',
   tongTLHS: '',
   soThuTuVB: '0000001',
-  tenLoaiVB: '',
+  tenLoaiVB: '22',
   soVanBan: '',
   kyHieuVB: '',
   ngayBanHanh: '',
@@ -101,12 +101,17 @@ function getNextSoThuTuVB(value: string) {
 }
 
 function getResetValuesAfterAddRow(
-  formData: Pick<DocumentFormData, 'hopSo' | 'hoSoSo' | 'soThuTuVB'>
+  formData: Pick<
+    DocumentFormData,
+    'hopSo' | 'hoSoSo' | 'soThuTuVB' | 'tongTLHS' | 'coQuanBanHanh'
+  >
 ): DocumentFormData {
   return {
     ...defaultValues,
     hopSo: formData.hopSo,
     hoSoSo: formData.hoSoSo,
+    tongTLHS: formData.tongTLHS,
+    coQuanBanHanh: formData.coQuanBanHanh,
     soThuTuVB: getNextSoThuTuVB(formData.soThuTuVB),
   }
 }
@@ -141,6 +146,8 @@ function DocumentForm() {
     defaultValues: initialFormValues,
   })
   const [documentTypeQuery, setDocumentTypeQuery] = useState('')
+  const [soToBatDau, setSoToBatDau] = useState('')
+  const [soToKetThuc, setSoToKetThuc] = useState('')
   const [savedRows, setSavedRows] = useState<SavedDocumentRow[]>(initialRows)
   const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null)
 
@@ -157,8 +164,7 @@ function DocumentForm() {
       { header: 'STT VB', getValue: (row: SavedDocumentRow) => row.soThuTuVB },
       {
         header: 'Loại VB',
-        getValue: (row: SavedDocumentRow) =>
-          getDocumentTypeLabel(row.tenLoaiVB),
+        getValue: (row: SavedDocumentRow) => row.tenLoaiVB,
       },
       { header: 'Số VB', getValue: (row: SavedDocumentRow) => row.soVanBan },
       { header: 'Ký hiệu', getValue: (row: SavedDocumentRow) => row.kyHieuVB },
@@ -207,19 +213,82 @@ function DocumentForm() {
     return value
   }
 
+  const normalizeFormData = (formData: DocumentFormData): DocumentFormData => {
+    return {
+      ...formData,
+      hopSo: normalizeFieldValue('hopSo', formData.hopSo),
+      hoSoSo: normalizeFieldValue('hoSoSo', formData.hoSoSo),
+      tongTLHS: normalizeFieldValue('tongTLHS', formData.tongTLHS),
+      soThuTuVB: normalizeFieldValue('soThuTuVB', formData.soThuTuVB),
+      soTrang: normalizeFieldValue('soTrang', formData.soTrang),
+      soTo: normalizeFieldValue('soTo', formData.soTo),
+    }
+  }
+
   const handleSubmit = () => {
-    exportExcel()
+    try {
+      const currentRows = getSavedRowsFromLocalStorage()
+      const normalizedRows: SavedDocumentRow[] = currentRows.map((row) => {
+        const normalizedData = normalizeFormData(row)
+        return {
+          ...normalizedData,
+          savedAt: row.savedAt,
+        }
+      })
+
+      localStorage.setItem(
+        LOCAL_STORAGE_ROWS_KEY,
+        JSON.stringify(normalizedRows)
+      )
+      setSavedRows(normalizedRows)
+      exportExcel()
+    } catch {
+      toast.error('Chuẩn hóa dữ liệu trước khi xuất thất bại.')
+    }
+  }
+
+  const handleClearLocalStorage = () => {
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_ROWS_KEY)
+      setSavedRows([])
+      setEditingRowIndex(null)
+      setDocumentTypeQuery('')
+      setSoToBatDau('')
+      setSoToKetThuc('')
+      form.reset(defaultValues)
+      toast.success('Đã xóa dữ liệu local storage')
+    } catch {
+      toast.error('Xóa local storage thất bại. Vui lòng thử lại.')
+    }
+  }
+
+  const updateSoToByRange = (startValue: string, endValue: string) => {
+    const start = Number.parseInt(startValue, 10)
+    const end = Number.parseInt(endValue, 10)
+
+    if (Number.isNaN(start) || Number.isNaN(end) || end < start) {
+      form.setValue('soTo', '')
+      return
+    }
+
+    const soTo = String(end - start + 1)
+    form.setValue('soTo', soTo)
   }
 
   const handleAddRow = (formData: DocumentFormData) => {
     try {
+      const normalizedFormData = normalizeFormData(formData)
+      const nextFormData =
+        Number.parseInt(normalizedFormData.soTrang, 10) === 1
+          ? { ...normalizedFormData, soTo: '1' }
+          : normalizedFormData
       const currentRows = getSavedRowsFromLocalStorage()
       let nextRows: SavedDocumentRow[]
 
       if (editingRowIndex !== null && currentRows[editingRowIndex]) {
         const existingRow = currentRows[editingRowIndex]
         const updatedRow: SavedDocumentRow = {
-          ...formData,
+          ...nextFormData,
           savedAt: existingRow.savedAt,
         }
         nextRows = currentRows.map((row, index) =>
@@ -227,7 +296,7 @@ function DocumentForm() {
         )
       } else {
         const rowToSave: SavedDocumentRow = {
-          ...formData,
+          ...nextFormData,
           savedAt: new Date().toISOString(),
         }
         nextRows = [...currentRows, rowToSave]
@@ -236,10 +305,12 @@ function DocumentForm() {
       localStorage.setItem(LOCAL_STORAGE_ROWS_KEY, JSON.stringify(nextRows))
       setSavedRows(nextRows)
 
-      form.reset(getResetValuesAfterAddRow(formData))
+      form.reset(getResetValuesAfterAddRow(nextFormData))
       setEditingRowIndex(null)
 
       setDocumentTypeQuery('')
+      setSoToBatDau('')
+      setSoToKetThuc('')
       toast.success(
         editingRowIndex !== null
           ? 'Đã cập nhật dòng thành công'
@@ -253,6 +324,8 @@ function DocumentForm() {
   const handleEditRow = (row: SavedDocumentRow, index: number) => {
     setEditingRowIndex(index)
     setDocumentTypeQuery(getDocumentTypeLabel(row.tenLoaiVB))
+    setSoToBatDau('')
+    setSoToKetThuc('')
     form.reset({
       hopSo: row.hopSo,
       hoSoSo: row.hoSoSo,
@@ -278,70 +351,64 @@ function DocumentForm() {
       </CardHeader>
       <CardContent>
         <Form {...form}>
-          <form className='grid grid-cols-1 gap-4 md:grid-cols-2'>
-            <FormField
-              control={form.control}
-              name='hopSo'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Hộp số</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      onChange={(e) =>
-                        field.onChange(
-                          normalizeFieldValue('hopSo', e.target.value)
-                        )
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+          <form className='space-y-4'>
+            <div className='flex gap-4'>
+              <FormField
+                control={form.control}
+                name='hopSo'
+                render={({ field }) => (
+                  <FormItem className='w-1/2'>
+                    <FormLabel>Hộp số</FormLabel>
+                    <FormControl>
+                      <Input {...field} type='text' />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name='hoSoSo'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Hồ sơ số</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      onChange={(e) =>
-                        field.onChange(
-                          normalizeFieldValue('hoSoSo', e.target.value)
-                        )
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='soThuTuVB'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Số thứ tự văn bản</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      onChange={(e) =>
-                        field.onChange(
-                          normalizeFieldValue('soThuTuVB', e.target.value)
-                        )
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
+              <FormField
+                control={form.control}
+                name='hoSoSo'
+                render={({ field }) => (
+                  <FormItem className='w-1/2'>
+                    <FormLabel>Hồ sơ số</FormLabel>
+                    <FormControl>
+                      <Input {...field} type='text' />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <div className='flex gap-4'>
+              <FormField
+                control={form.control}
+                name='soThuTuVB'
+                render={({ field }) => (
+                  <FormItem className='w-1/2'>
+                    <FormLabel>Số thứ tự văn bản</FormLabel>
+                    <FormControl>
+                      <Input {...field} type='text' />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='tongTLHS'
+                render={({ field }) => (
+                  <FormItem className='w-1/2'>
+                    <FormLabel>Tổng TLHS</FormLabel>
+                    <FormControl>
+                      <Input {...field} type='text' />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <FormField
               control={form.control}
               name='tenLoaiVB'
@@ -350,6 +417,7 @@ function DocumentForm() {
                   <FormLabel>Tên loại văn bản</FormLabel>
                   <div className='flex items-center gap-2'>
                     <Input
+                      type='text'
                       value={documentTypeQuery}
                       onChange={(e) => setDocumentTypeQuery(e.target.value)}
                       placeholder='Gõ để lọc (ví dụ: Q)'
@@ -378,71 +446,83 @@ function DocumentForm() {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name='soVanBan'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Số văn bản</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className='flex gap-4'>
+              <FormField
+                control={form.control}
+                name='soVanBan'
+                render={({ field }) => (
+                  <FormItem className='w-1/2'>
+                    <FormLabel>Số văn bản</FormLabel>
+                    <FormControl>
+                      <Input {...field} type='text' />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name='kyHieuVB'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Ký hiệu văn bản</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+              <FormField
+                control={form.control}
+                name='kyHieuVB'
+                render={({ field }) => (
+                  <FormItem className='w-1/2'>
+                    <FormLabel>Ký hiệu văn bản</FormLabel>
+                    <FormControl>
+                      <Input {...field} type='text' />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
-            <FormField
-              control={form.control}
-              name='ngayBanHanh'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Ngày ban hành</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      placeholder='dd/mm/yyyy'
-                      inputMode='numeric'
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className='flex gap-4'>
+              <FormField
+                control={form.control}
+                name='ngayBanHanh'
+                render={({ field }) => (
+                  <FormItem className='w-1/4'>
+                    <FormLabel>Ngày ban hành</FormLabel>
+                    <FormControl>
+                      <Input {...field} type='text' placeholder='dd/mm/yyyy' />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name='coQuanBanHanh'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Cơ quan ban hành</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
+              <FormField
+                control={form.control}
+                name='coQuanBanHanh'
+                render={({ field }) => (
+                  <FormItem className='w-3/4'>
+                    <FormLabel>Cơ quan ban hành</FormLabel>
+                    <div className='flex items-center gap-2'>
+                      <FormControl>
+                        <Input {...field} type='text' />
+                      </FormControl>
+                      <Button
+                        type='button'
+                        variant='outline'
+                        onClick={() => {
+                          form.setValue('coQuanBanHanh', '', {
+                            shouldDirty: true,
+                          })
+                        }}
+                      >
+                        Xóa CQ hiện tại
+                      </Button>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
             <FormField
               control={form.control}
               name='trichYeu'
               render={({ field }) => (
-                <FormItem className='md:col-span-2'>
+                <FormItem className='w-full'>
                   <FormLabel>Trích yếu</FormLabel>
                   <FormControl>
                     <Textarea {...field} rows={3} />
@@ -461,11 +541,17 @@ function DocumentForm() {
                   <FormControl>
                     <Input
                       {...field}
-                      onChange={(e) =>
-                        field.onChange(
-                          normalizeFieldValue('soTrang', e.target.value)
-                        )
-                      }
+                      type='text'
+                      onChange={(e) => {
+                        const nextValue = e.target.value
+                        field.onChange(nextValue)
+                        if (
+                          nextValue.trim() === '1' ||
+                          nextValue.trim() === '2'
+                        ) {
+                          form.setValue('soTo', '01')
+                        }
+                      }}
                     />
                   </FormControl>
                   <FormMessage />
@@ -478,44 +564,43 @@ function DocumentForm() {
               name='soTo'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Số tờ</FormLabel>
-                  <FormControl>
+                  <FormLabel>Số tờ (Bắt đầu - Kết thúc)</FormLabel>
+                  <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
                     <Input
-                      {...field}
-                      onChange={(e) =>
-                        field.onChange(
-                          normalizeFieldValue('soTo', e.target.value)
-                        )
-                      }
+                      type='text'
+                      value={soToBatDau}
+                      placeholder='Bắt đầu'
+                      onChange={(e) => {
+                        const nextValue = e.target.value
+                        setSoToBatDau(nextValue)
+                        updateSoToByRange(nextValue, soToKetThuc)
+                      }}
                     />
-                  </FormControl>
+                    <Input
+                      type='text'
+                      value={soToKetThuc}
+                      placeholder='Kết thúc'
+                      onChange={(e) => {
+                        const nextValue = e.target.value
+                        setSoToKetThuc(nextValue)
+                        updateSoToByRange(soToBatDau, nextValue)
+                      }}
+                    />
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type='text'
+                        readOnly
+                        placeholder='Số tờ'
+                      />
+                    </FormControl>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <FormField
-              control={form.control}
-              name='tongTLHS'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tổng TLHS</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      onChange={(e) =>
-                        field.onChange(
-                          normalizeFieldValue('tongTLHS', e.target.value)
-                        )
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className='pt-2 md:col-span-2'>
+            <div className='pt-2'>
               <div className='flex items-center gap-2'>
                 <Button
                   type='button'
@@ -529,6 +614,15 @@ function DocumentForm() {
                     Lưu excel
                   </Button>
                 )}
+                {savedRows.length > 0 && (
+                  <Button
+                    type='button'
+                    variant='outline'
+                    onClick={handleClearLocalStorage}
+                  >
+                    Xóa local storage
+                  </Button>
+                )}
                 {editingRowIndex !== null && (
                   <Button
                     type='button'
@@ -536,6 +630,8 @@ function DocumentForm() {
                     onClick={() => {
                       setEditingRowIndex(null)
                       setDocumentTypeQuery('')
+                      setSoToBatDau('')
+                      setSoToKetThuc('')
                       form.reset(getResetValuesAfterAddRow(form.getValues()))
                     }}
                   >
