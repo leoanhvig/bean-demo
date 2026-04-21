@@ -1,4 +1,19 @@
+import { useMemo } from 'react'
+import {
+  type ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
 import { Button } from '@/components/ui/button'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 type SavedRow = {
   hopSo: string
@@ -29,72 +44,99 @@ export function SavedRowsTable({
   onEditRow,
   editingRowIndex,
 }: SavedRowsTableProps) {
+  const columns = useMemo<ColumnDef<SavedRow>[]>(
+    () => [
+      { accessorKey: 'hopSo', header: 'Hộp số' },
+      { accessorKey: 'hoSoSo', header: 'Hồ sơ số' },
+      { accessorKey: 'tongTLHS', header: 'Tổng TLHS' },
+      { accessorKey: 'soThuTuVB', header: 'STT VB' },
+      // {
+      //   accessorKey: 'tenLoaiVB',
+      //   header: 'Loại VB',
+      //   cell: ({ row }) => getDocumentTypeLabel(row.original.tenLoaiVB),
+      // },
+      // { accessorKey: 'soVanBan', header: 'Số VB' },
+      // { accessorKey: 'kyHieuVB', header: 'Ký hiệu' },
+      // { accessorKey: 'ngayBanHanh', header: 'Ngày ban hành' },
+      // { accessorKey: 'coQuanBanHanh', header: 'Cơ quan BH' },
+      // {
+      //   accessorKey: 'trichYeu',
+      //   header: 'Trích yếu',
+      //   cell: ({ row }) => (
+      //     <div className='min-w-48 whitespace-pre-wrap'>
+      //       {row.original.trichYeu}
+      //     </div>
+      //   ),
+      // },
+      // { accessorKey: 'soTrang', header: 'Số trang' },
+      // { accessorKey: 'soTo', header: 'Số tờ' },
+      {
+        id: 'actions',
+        header: 'Thao tác',
+        cell: ({ row }) => (
+          <Button
+            type='button'
+            size='sm'
+            variant={editingRowIndex === row.index ? 'secondary' : 'outline'}
+            onClick={() => onEditRow(row.original, row.index)}
+          >
+            {editingRowIndex === row.index ? 'Đang sửa' : 'Edit'}
+          </Button>
+        ),
+      },
+    ],
+    [editingRowIndex, getDocumentTypeLabel, onEditRow]
+  )
+
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const table = useReactTable({
+    data: savedRows,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  })
+
   if (savedRows.length === 0) return null
 
   return (
-    <div className='rounded-md border border-border bg-muted/30 p-4 md:col-span-2'>
+    <div className='rounded-md border border-border bg-muted/30 p-4'>
       <p className='mb-3 text-sm font-semibold text-muted-foreground'>
         Dữ liệu đã lưu ({savedRows.length} dòng)
       </p>
-      <div className='max-h-96 overflow-auto rounded-md border border-border bg-background'>
-        <table className='min-w-full text-sm'>
-          <thead className='bg-muted text-muted-foreground'>
-            <tr>
-              <th className='px-3 py-2 text-left font-semibold'>Hộp số</th>
-              <th className='px-3 py-2 text-left font-semibold'>Hồ sơ số</th>
-              <th className='px-3 py-2 text-left font-semibold'>Tổng TLHS</th>
-              <th className='px-3 py-2 text-left font-semibold'>STT VB</th>
-              <th className='px-3 py-2 text-left font-semibold'>Loại VB</th>
-              <th className='px-3 py-2 text-left font-semibold'>Số VB</th>
-              <th className='px-3 py-2 text-left font-semibold'>Ký hiệu</th>
-              <th className='px-3 py-2 text-left font-semibold'>
-                Ngày ban hành
-              </th>
-              <th className='px-3 py-2 text-left font-semibold'>Cơ quan BH</th>
-              <th className='px-3 py-2 text-left font-semibold'>Trích yếu</th>
-              <th className='px-3 py-2 text-left font-semibold'>Số trang</th>
-              <th className='px-3 py-2 text-left font-semibold'>Số tờ</th>
-              <th className='px-3 py-2 text-left font-semibold'>Thao tác</th>
-            </tr>
-          </thead>
-          <tbody>
-            {savedRows.map((row, index) => (
-              <tr
-                key={`${row.savedAt}-${index}`}
-                className='border-t border-border align-top'
-              >
-                <td className='px-3 py-2'>{row.hopSo}</td>
-                <td className='px-3 py-2'>{row.hoSoSo}</td>
-                <td className='px-3 py-2'>{row.tongTLHS}</td>
-                <td className='px-3 py-2'>{row.soThuTuVB}</td>
-                <td className='px-3 py-2'>
-                  {getDocumentTypeLabel(row.tenLoaiVB)}
-                </td>
-                <td className='px-3 py-2'>{row.soVanBan}</td>
-                <td className='px-3 py-2'>{row.kyHieuVB}</td>
-                <td className='px-3 py-2'>{row.ngayBanHanh}</td>
-                <td className='px-3 py-2'>{row.coQuanBanHanh}</td>
-                <td className='min-w-48 px-3 py-2 whitespace-pre-wrap'>
-                  {row.trichYeu}
-                </td>
-                <td className='px-3 py-2'>{row.soTrang}</td>
-                <td className='px-3 py-2'>{row.soTo}</td>
-                <td className='px-3 py-2'>
-                  <Button
-                    type='button'
-                    size='sm'
-                    variant={
-                      editingRowIndex === index ? 'secondary' : 'outline'
-                    }
-                    onClick={() => onEditRow(row, index)}
-                  >
-                    {editingRowIndex === index ? 'Đang sửa' : 'Edit'}
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className='rounded-md border border-border bg-background'>
+        <div className='max-h-96 overflow-y-auto'>
+          <Table className='w-full'>
+            <TableHeader className='bg-muted text-muted-foreground'>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <TableHead key={header.id}>
+                      {header.isPlaceholder
+                        ? null
+                        : flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id} className='align-top'>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext()
+                      )}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   )

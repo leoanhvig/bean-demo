@@ -1,9 +1,18 @@
 import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { Check, ChevronsUpDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { useLocalStorageExcelExport } from '@/lib/use-localstorage-excel-export.ts'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from '@/components/ui/command'
 import {
   Form,
   FormControl,
@@ -14,12 +23,10 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { SavedRowsTable } from '@/features/form-app/components/saved-rows-table'
 
@@ -145,7 +152,7 @@ function DocumentForm() {
   const form = useForm<DocumentFormData>({
     defaultValues: initialFormValues,
   })
-  const [documentTypeQuery, setDocumentTypeQuery] = useState('')
+  const [documentTypeOpen, setDocumentTypeOpen] = useState(false)
   const [soToBatDau, setSoToBatDau] = useState('')
   const [soToKetThuc, setSoToKetThuc] = useState('')
   const [savedRows, setSavedRows] = useState<SavedDocumentRow[]>(initialRows)
@@ -184,17 +191,6 @@ function DocumentForm() {
       { header: 'Số tờ', getValue: (row: SavedDocumentRow) => row.soTo },
     ],
   })
-
-  const filteredDocumentTypeOptions = useMemo(() => {
-    const query = documentTypeQuery.trim().toLowerCase()
-    if (!query) return documentTypeOptions
-
-    return documentTypeOptions.filter(
-      (option) =>
-        option.label.toLowerCase().startsWith(query) ||
-        option.value.startsWith(query)
-    )
-  }, [documentTypeQuery])
 
   const normalizeFieldValue = (
     name: keyof DocumentFormData,
@@ -252,7 +248,7 @@ function DocumentForm() {
       localStorage.removeItem(LOCAL_STORAGE_ROWS_KEY)
       setSavedRows([])
       setEditingRowIndex(null)
-      setDocumentTypeQuery('')
+      setDocumentTypeOpen(false)
       setSoToBatDau('')
       setSoToKetThuc('')
       form.reset(defaultValues)
@@ -275,7 +271,11 @@ function DocumentForm() {
     form.setValue('soTo', soTo)
   }
 
-  const handleAddRow = (formData: DocumentFormData) => {
+  const handleAddRow = (
+    formData: DocumentFormData,
+    _event?: unknown,
+    preserveCurrentForm = false
+  ) => {
     try {
       const normalizedFormData = normalizeFormData(formData)
       const nextFormData =
@@ -305,12 +305,21 @@ function DocumentForm() {
       localStorage.setItem(LOCAL_STORAGE_ROWS_KEY, JSON.stringify(nextRows))
       setSavedRows(nextRows)
 
-      form.reset(getResetValuesAfterAddRow(nextFormData))
+      if (editingRowIndex !== null || !preserveCurrentForm) {
+        form.reset(getResetValuesAfterAddRow(nextFormData))
+      } else {
+        form.setValue('soThuTuVB', getNextSoThuTuVB(nextFormData.soThuTuVB), {
+          shouldDirty: true,
+        })
+      }
+
       setEditingRowIndex(null)
 
-      setDocumentTypeQuery('')
-      setSoToBatDau('')
-      setSoToKetThuc('')
+      setDocumentTypeOpen(false)
+      if (editingRowIndex !== null || !preserveCurrentForm) {
+        setSoToBatDau('')
+        setSoToKetThuc('')
+      }
       toast.success(
         editingRowIndex !== null
           ? 'Đã cập nhật dòng thành công'
@@ -323,7 +332,7 @@ function DocumentForm() {
 
   const handleEditRow = (row: SavedDocumentRow, index: number) => {
     setEditingRowIndex(index)
-    setDocumentTypeQuery(getDocumentTypeLabel(row.tenLoaiVB))
+    setDocumentTypeOpen(false)
     setSoToBatDau('')
     setSoToKetThuc('')
     form.reset({
@@ -371,7 +380,7 @@ function DocumentForm() {
                 control={form.control}
                 name='hoSoSo'
                 render={({ field }) => (
-                  <FormItem className='w-1/2'>
+                  <FormItem className='min-w-0 flex-1'>
                     <FormLabel>Hồ sơ số</FormLabel>
                     <FormControl>
                       <Input {...field} type='text' />
@@ -381,12 +390,12 @@ function DocumentForm() {
                 )}
               />
             </div>
-            <div className='flex gap-4'>
+            <div className='flex w-full gap-4'>
               <FormField
                 control={form.control}
                 name='soThuTuVB'
                 render={({ field }) => (
-                  <FormItem className='w-1/2'>
+                  <FormItem className='min-w-0 flex-1'>
                     <FormLabel>Số thứ tự văn bản</FormLabel>
                     <FormControl>
                       <Input {...field} type='text' />
@@ -415,32 +424,56 @@ function DocumentForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Tên loại văn bản</FormLabel>
-                  <div className='flex items-center gap-2'>
-                    <Input
-                      type='text'
-                      value={documentTypeQuery}
-                      onChange={(e) => setDocumentTypeQuery(e.target.value)}
-                      placeholder='Gõ để lọc (ví dụ: Q)'
-                      className='w-40'
-                    />
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value || undefined}
-                    >
+                  <Popover
+                    open={documentTypeOpen}
+                    onOpenChange={setDocumentTypeOpen}
+                  >
+                    <PopoverTrigger asChild>
                       <FormControl>
-                        <SelectTrigger className='flex-1'>
-                          <SelectValue placeholder='--Chọn loại--' />
-                        </SelectTrigger>
+                        <Button
+                          variant='outline'
+                          role='combobox'
+                          aria-expanded={documentTypeOpen}
+                          className='w-full justify-between'
+                        >
+                          {field.value
+                            ? getDocumentTypeLabel(field.value)
+                            : '--Chọn loại--'}
+                          <ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
+                        </Button>
                       </FormControl>
-                      <SelectContent>
-                        {filteredDocumentTypeOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                    </PopoverTrigger>
+                    <PopoverContent className='w-[--radix-popover-trigger-width] max-w-full p-0'>
+                      <Command>
+                        <CommandInput placeholder='Tìm loại văn bản...' />
+                        <CommandEmpty>
+                          Không tìm thấy loại văn bản.
+                        </CommandEmpty>
+                        <CommandGroup>
+                          {documentTypeOptions.map((option) => (
+                            <CommandItem
+                              key={option.value}
+                              value={`${option.value} ${option.label}`}
+                              onSelect={() => {
+                                field.onChange(option.value)
+                                setDocumentTypeOpen(false)
+                              }}
+                            >
+                              {option.label}
+                              <Check
+                                className={cn(
+                                  'ml-auto h-4 w-4',
+                                  field.value === option.value
+                                    ? 'opacity-100'
+                                    : 'opacity-0'
+                                )}
+                              />
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                   <FormMessage />
                 </FormItem>
               )}
@@ -522,7 +555,7 @@ function DocumentForm() {
               control={form.control}
               name='trichYeu'
               render={({ field }) => (
-                <FormItem className='w-full'>
+                <FormItem>
                   <FormLabel>Trích yếu</FormLabel>
                   <FormControl>
                     <Textarea {...field} rows={3} />
@@ -565,7 +598,7 @@ function DocumentForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Số tờ (Bắt đầu - Kết thúc)</FormLabel>
-                  <div className='grid grid-cols-1 gap-2 md:grid-cols-3'>
+                  <div className='grid grid-cols-3 gap-2'>
                     <Input
                       type='text'
                       value={soToBatDau}
@@ -601,7 +634,7 @@ function DocumentForm() {
             />
 
             <div className='pt-2'>
-              <div className='flex items-center gap-2'>
+              <div className='flex flex-wrap items-center gap-2'>
                 <Button
                   type='button'
                   onClick={form.handleSubmit(handleAddRow)}
@@ -609,6 +642,17 @@ function DocumentForm() {
                 >
                   {editingRowIndex !== null ? 'Update row' : 'Add row'}
                 </Button>
+                {editingRowIndex === null && (
+                  <Button
+                    type='button'
+                    variant='secondary'
+                    onClick={form.handleSubmit((formData, event) =>
+                      handleAddRow(formData, event, true)
+                    )}
+                  >
+                    Add row (giữ form)
+                  </Button>
+                )}
                 {savedRows.length > 0 && (
                   <Button type='button' onClick={handleSubmit}>
                     Lưu excel
@@ -629,7 +673,7 @@ function DocumentForm() {
                     variant='outline'
                     onClick={() => {
                       setEditingRowIndex(null)
-                      setDocumentTypeQuery('')
+                      setDocumentTypeOpen(false)
                       setSoToBatDau('')
                       setSoToKetThuc('')
                       form.reset(getResetValuesAfterAddRow(form.getValues()))
