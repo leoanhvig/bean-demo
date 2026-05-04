@@ -12,6 +12,7 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
+  CommandList,
 } from '@/components/ui/command'
 import {
   Form,
@@ -139,6 +140,23 @@ function getDocumentTypeLabel(value: string) {
   )
 }
 
+function formatNgayBanHanhInput(value: string) {
+  const trimmedValue = value.trim()
+  if (!trimmedValue) return ''
+
+  if (trimmedValue.includes('/')) return trimmedValue
+
+  const digits = trimmedValue.replace(/\D/g, '')
+
+  if (digits.length === 4) return digits
+  if (digits.length === 6) return `${digits.slice(0, 2)}/${digits.slice(2)}`
+  if (digits.length === 8) {
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
+  }
+
+  return trimmedValue
+}
+
 function DocumentForm() {
   const initialRows = useMemo(() => getSavedRowsFromLocalStorage(), [])
 
@@ -216,6 +234,7 @@ function DocumentForm() {
       hoSoSo: normalizeFieldValue('hoSoSo', formData.hoSoSo),
       tongTLHS: normalizeFieldValue('tongTLHS', formData.tongTLHS),
       soThuTuVB: normalizeFieldValue('soThuTuVB', formData.soThuTuVB),
+      ngayBanHanh: formatNgayBanHanhInput(formData.ngayBanHanh),
       soTrang: normalizeFieldValue('soTrang', formData.soTrang),
       soTo: normalizeFieldValue('soTo', formData.soTo),
     }
@@ -351,6 +370,30 @@ function DocumentForm() {
     })
   }
 
+  const handleDeleteRow = (indexToDelete: number) => {
+    try {
+      const currentRows = getSavedRowsFromLocalStorage()
+      const nextRows = currentRows.filter((_, index) => index !== indexToDelete)
+
+      localStorage.setItem(LOCAL_STORAGE_ROWS_KEY, JSON.stringify(nextRows))
+      setSavedRows(nextRows)
+
+      if (editingRowIndex === indexToDelete) {
+        setEditingRowIndex(null)
+        setDocumentTypeOpen(false)
+        setSoToBatDau('')
+        setSoToKetThuc('')
+        form.reset(getResetValuesAfterAddRow(form.getValues()))
+      } else if (editingRowIndex !== null && editingRowIndex > indexToDelete) {
+        setEditingRowIndex(editingRowIndex - 1)
+      }
+
+      toast.success('Đã xóa dòng thành công')
+    } catch {
+      toast.error('Xóa dòng thất bại. Vui lòng thử lại.')
+    }
+  }
+
   return (
     <Card className='shadow-lg'>
       <CardHeader>
@@ -445,32 +488,37 @@ function DocumentForm() {
                     </PopoverTrigger>
                     <PopoverContent className='w-[--radix-popover-trigger-width] max-w-full p-0'>
                       <Command>
-                        <CommandInput placeholder='Tìm loại văn bản...' />
-                        <CommandEmpty>
-                          Không tìm thấy loại văn bản.
-                        </CommandEmpty>
-                        <CommandGroup>
-                          {documentTypeOptions.map((option) => (
-                            <CommandItem
-                              key={option.value}
-                              value={`${option.value} ${option.label}`}
-                              onSelect={() => {
-                                field.onChange(option.value)
-                                setDocumentTypeOpen(false)
-                              }}
-                            >
-                              {option.label}
-                              <Check
-                                className={cn(
-                                  'ml-auto h-4 w-4',
-                                  field.value === option.value
-                                    ? 'opacity-100'
-                                    : 'opacity-0'
-                                )}
-                              />
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
+                        <CommandInput
+                          autoFocus
+                          placeholder='Tìm loại văn bản...'
+                        />
+                        <CommandList>
+                          <CommandEmpty>
+                            Không tìm thấy loại văn bản.
+                          </CommandEmpty>
+                          <CommandGroup>
+                            {documentTypeOptions.map((option) => (
+                              <CommandItem
+                                key={option.value}
+                                value={`${option.value} ${option.label}`}
+                                onSelect={() => {
+                                  field.onChange(option.value)
+                                  setDocumentTypeOpen(false)
+                                }}
+                              >
+                                {option.label}
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-4 w-4',
+                                    field.value === option.value
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
                       </Command>
                     </PopoverContent>
                   </Popover>
@@ -517,7 +565,23 @@ function DocumentForm() {
                   <FormItem className='w-1/4'>
                     <FormLabel>Ngày ban hành</FormLabel>
                     <FormControl>
-                      <Input {...field} type='text' placeholder='dd/mm/yyyy' />
+                      <Input
+                        {...field}
+                        type='text'
+                        placeholder='dd/mm/yyyy'
+                        onBlur={(e) => {
+                          field.onBlur()
+                          field.onChange(formatNgayBanHanhInput(e.target.value))
+                        }}
+                        onPaste={(e) => {
+                          e.preventDefault()
+                          field.onChange(
+                            formatNgayBanHanhInput(
+                              e.clipboardData.getData('text')
+                            )
+                          )
+                        }}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -687,7 +751,7 @@ function DocumentForm() {
 
             <SavedRowsTable
               savedRows={savedRows}
-              getDocumentTypeLabel={getDocumentTypeLabel}
+              onDeleteRow={handleDeleteRow}
               onEditRow={handleEditRow}
               editingRowIndex={editingRowIndex}
             />
